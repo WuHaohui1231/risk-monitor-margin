@@ -1,0 +1,28 @@
+{
+  "name": "risk-monitor-system",
+  "version": "1.0.0",
+  "description": "A full-stack risk monitoring system with margin calculation",
+  "main": "index.js",
+  "scripts": {
+    "client": "cd client && npm start",
+    "server": "cd server && npm run dev",
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "install-all": "npm install && cd client && npm install && cd ../server && npm install",
+    "build": "cd client && npm run build",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "risk",
+    "monitoring",
+    "margin",
+    "finance",
+    "react",
+    "node",
+    "postgresql"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+} 

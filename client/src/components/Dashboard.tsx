@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { marginApi } from '../services/api';
+import { marginApi, clientsApi } from '../services/api';
 import { MarginStatus } from '../types';
 import useRefreshTimer from '../hooks/useRefreshTimer';
 
@@ -8,12 +8,27 @@ const Dashboard: React.FC = () => {
   const [allMarginStatuses, setAllMarginStatuses] = useState<MarginStatus[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [expandedClient, setExpandedClient] = useState<number | null>(null);
+  const [clientNames, setClientNames] = useState<Record<number, string>>({});
 
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       const response = await marginApi.getAllStatuses();
       setAllMarginStatuses(response.data);
+      
+      // Fetch client names
+      try {
+        const clientsResponse = await clientsApi.getAll();
+        const clientsMap: Record<number, string> = {};
+        clientsResponse.data.forEach((client: any) => {
+          clientsMap[client.id] = client.name;
+        });
+        setClientNames(clientsMap);
+      } catch (clientErr) {
+        console.error('Error fetching client names:', clientErr);
+      }
+      
       setError(null);
     } catch (err) {
       setError('Failed to fetch margin statuses');
@@ -28,6 +43,20 @@ const Dashboard: React.FC = () => {
 
   if (loading && allMarginStatuses.length === 0) return <div>Loading dashboard...</div>;
   if (error) return <div className="error">{error}</div>;
+
+  // Toggle expanded view for client positions
+  const toggleClientExpand = (clientId: number) => {
+    if (expandedClient === clientId) {
+      setExpandedClient(null);
+    } else {
+      setExpandedClient(clientId);
+    }
+  };
+
+  // Safe number formatter
+  const formatNumber = (value: number | undefined | null): string => {
+    return value !== undefined && value !== null ? value.toFixed(2) : '0.00';
+  };
 
   return (
     <div className="dashboard">
@@ -44,44 +73,107 @@ const Dashboard: React.FC = () => {
       <div className="clients-section">
         <h2>Client Risk Overview</h2>
         
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Client ID</th>
-              <th>Portfolio Value</th>
-              <th>Loan Amount</th>
-              <th>Net Equity</th>
-              <th>Margin Requirement</th>
-              <th>Margin Shortfall</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {allMarginStatuses.map((status) => {
-              const statusClass = status.marginCallTriggered ? 'negative' : 'positive';
+        {allMarginStatuses.map((status) => {
+          const statusClass = status.marginCallTriggered ? 'negative' : 'positive';
+          const isExpanded = expandedClient === status.clientId;
+          const clientName = clientNames[status.clientId] || 'Unknown';
+          
+          return (
+            <div 
+              key={status.clientId} 
+              className={`client-card ${status.marginCallTriggered ? 'margin-call' : ''}`}
+            >
+              <div className="client-header">
+                <h3>Client: {clientName} (ID: {status.clientId})</h3>
+                <button 
+                  className="toggle-button"
+                  onClick={() => toggleClientExpand(status.clientId)}
+                >
+                  {isExpanded ? 'Hide Positions' : 'Show Positions'}
+                </button>
+                {/* <Link to={`/client/${status.clientId}`} className="button">
+                  View Details
+                </Link> */}
+              </div>
               
-              return (
-                <tr key={status.clientId} className={status.marginCallTriggered ? 'margin-call-row' : ''}>
-                  <td>{status.clientId}</td>
-                  <td>${status.portfolioMarketValue.toFixed(2)}</td>
-                  <td>${status.loanAmount.toFixed(2)}</td>
-                  <td>${status.netEquity.toFixed(2)}</td>
-                  <td>${status.totalMarginRequirement.toFixed(2)}</td>
-                  <td className={status.marginShortfall > 0 ? 'negative' : 'positive'}>
-                    ${status.marginShortfall.toFixed(2)}
-                  </td>
-                  <td className={statusClass}>
+              <div className="margin-metrics">
+                <div className="metric">
+                  <span className="label">Portfolio Value:</span>
+                  <span className="value">${formatNumber(status.portfolioMarketValue)}</span>
+                </div>
+                <div className="metric">
+                  <span className="label">Loan Amount:</span>
+                  <span className="value">${formatNumber(status.loanAmount)}</span>
+                </div>
+                <div className="metric">
+                  <span className="label">Net Equity:</span>
+                  <span className="value">${formatNumber(status.netEquity)}</span>
+                </div>
+                <div className="metric">
+                  <span className="label">Margin Requirement:</span>
+                  <span className="value">${formatNumber(status.totalMarginRequirement)}</span>
+                </div>
+                <div className="metric">
+                  <span className="label">Margin Shortfall:</span>
+                  <span className={`value ${status.marginShortfall > 0 ? 'negative' : 'positive'}`}>
+                    ${formatNumber(status.marginShortfall)}
+                  </span>
+                </div>
+                <div className="metric">
+                  <span className="label">Status:</span>
+                  <span className={`value ${statusClass}`}>
                     {status.marginCallTriggered ? 'MARGIN CALL' : 'NORMAL'}
-                  </td>
-                  <td>
-                    <Link to={`/client/${status.clientId}`} className="button">View Details</Link>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                  </span>
+                </div>
+              </div>
+              
+              {isExpanded && (
+                <div className="positions-section">
+                  <h4>Client Positions</h4>
+                  {status.positions && status.positions.length > 0 ? (
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>Symbol</th>
+                          <th>Quantity</th>
+                          <th>Current Price</th>
+                          <th>Market Value</th>
+                          {/* <th>Cost Basis</th> */}
+                          <th>% of Portfolio</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {status.positions.map((position) => {
+                          // Calculate position value if not present
+                          const positionValue = position.positionValue || 
+                            (position.quantity * (position.current_price || 0));
+                          
+                          // Calculate percentage of portfolio
+                          const portfolioPercentage = status.portfolioMarketValue && status.portfolioMarketValue > 0
+                            ? (positionValue / status.portfolioMarketValue) * 100
+                            : 0;
+                            
+                          return (
+                            <tr key={position.symbol}>
+                              <td>{position.symbol}</td>
+                              <td>{position.quantity}</td>
+                              <td>${formatNumber(positionValue / position.quantity)}</td>
+                              <td>${formatNumber(positionValue)}</td>
+                              {/* <td>${formatNumber(position.cost_basis)}</td> */}
+                              <td>{formatNumber(portfolioPercentage)}%</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <p>No positions found for this client.</p>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

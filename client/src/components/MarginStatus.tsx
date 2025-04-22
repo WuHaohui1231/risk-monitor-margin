@@ -1,12 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { marginApi, clientsApi } from '../services/api';
 import { MarginStatus as MarginStatusType, Client } from '../types';
-import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
-import { Pie } from 'react-chartjs-2';
-
-// Register Chart.js components
-ChartJS.register(ArcElement, Tooltip, Legend);
+import useRefreshTimer from '../hooks/useRefreshTimer';
 
 const MarginStatus: React.FC = () => {
   const { clientId } = useParams<{ clientId: string }>();
@@ -14,10 +10,8 @@ const MarginStatus: React.FC = () => {
   const [client, setClient] = useState<Client | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [refreshInterval, setRefreshInterval] = useState<number>(30); // seconds
-  const [timeUntilRefresh, setTimeUntilRefresh] = useState<number>(refreshInterval);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     if (!clientId) return;
     
     try {
@@ -38,57 +32,16 @@ const MarginStatus: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [clientId]);
 
-  useEffect(() => {
-    fetchData();
-    
-    // Setup auto-refresh
-    const intervalId = setInterval(() => {
-      setTimeUntilRefresh((prev) => {
-        if (prev <= 1) {
-          fetchData();
-          return refreshInterval;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    
-    return () => clearInterval(intervalId);
-  }, [clientId, refreshInterval]);
+  // Use the shared refresh timer hook
+  const { timeUntilRefresh, triggerRefresh } = useRefreshTimer(fetchData, 30);
 
   if (loading && !marginStatus) return <div>Loading margin status...</div>;
   if (error) return <div className="error">{error}</div>;
   if (!marginStatus || !client) return <div className="error">Margin data not available</div>;
 
   const marginCallClass = marginStatus.marginCallTriggered ? 'margin-call-alert' : '';
-
-  // Prepare chart data
-  const chartData = {
-    labels: ['Equity', 'Loan'],
-    datasets: [
-      {
-        data: [marginStatus.netEquity, marginStatus.loanAmount],
-        backgroundColor: ['#4CAF50', '#F44336'],
-        borderColor: ['#388E3C', '#D32F2F'],
-        borderWidth: 1,
-      },
-    ],
-  };
-
-  // Chart options
-  const chartOptions = {
-    responsive: true,
-    plugins: {
-      legend: {
-        position: 'bottom' as const,
-      },
-      title: {
-        display: true,
-        text: 'Portfolio Composition',
-      },
-    },
-  };
 
   // Position breakdown for the table
   const positionRows = marginStatus.positions.map((position) => (
@@ -106,7 +59,7 @@ const MarginStatus: React.FC = () => {
       <div className="header">
         <h2>Margin Status for {client.name}</h2>
         <div className="refresh-info">
-          <button onClick={fetchData} className="refresh-button">
+          <button onClick={triggerRefresh} className="refresh-button">
             Refresh Now
           </button>
           <span>Auto-refresh in {timeUntilRefresh}s</span>
@@ -156,15 +109,6 @@ const MarginStatus: React.FC = () => {
             <p>This account has insufficient equity to meet margin requirements.</p>
           </div>
         )}
-      </div>
-      
-      <div className="charts-section">
-        <div className="chart-container">
-          <h3>Portfolio Composition</h3>
-          <div style={{ width: '300px', height: '300px', margin: '0 auto' }}>
-            <Pie data={chartData} options={chartOptions} />
-          </div>
-        </div>
       </div>
       
       <div className="positions-section">

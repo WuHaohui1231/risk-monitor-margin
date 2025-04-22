@@ -70,6 +70,7 @@ const getAllSymbols = async () => {
  * @returns {Promise<void>}
  */
 const updateAllMarketData = async () => {
+  console.log('Called updateAllMarketData');
   try {
     // Get all unique symbols from positions
     const symbols = await getAllSymbols();

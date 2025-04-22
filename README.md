@@ -70,7 +70,7 @@ The system is divided into three main components:
    ```
    npm run dev
    ```
-   The server will run on http://localhost:5000
+   The server will run on http://localhost:5000 by default
 
 ### Frontend Setup
 
